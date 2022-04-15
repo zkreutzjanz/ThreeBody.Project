@@ -15,6 +15,7 @@ const int PARTITION_WIDTH = 200;
 const int PARTITION_HEIGHT = 200;
 
 
+//taken of of internet, well written
 unsigned char* createBitmapFileHeader (int height, int stride)
 {
     int fileSize = FILE_HEADER_SIZE + INFO_HEADER_SIZE + (stride * height);
@@ -37,6 +38,7 @@ unsigned char* createBitmapFileHeader (int height, int stride)
     return fileHeader;
 }
 
+//taken of of internet, well written
 unsigned char* createBitmapInfoHeader (int height, int width)
 {
     static unsigned char infoHeader[] = {
@@ -68,6 +70,8 @@ unsigned char* createBitmapInfoHeader (int height, int width)
     return infoHeader;
 }
 
+
+//vector helper
 double magnitude(vector<double> a,vector<double> b){
     if(a.size()!=b.size()){return 0;}
     if(a.size()==0){return 0;}
@@ -79,6 +83,7 @@ double magnitude(vector<double> a,vector<double> b){
     return sqrt(innerTerm);
 }
 
+//vector helper
 vector<double> unitVector(vector<double> from,vector<double> to){
     vector<double> uVector;
     double mag =magnitude(from,to);
@@ -88,6 +93,7 @@ vector<double> unitVector(vector<double> from,vector<double> to){
     return uVector;
 }
 
+//vector helper
 vector<double> vectorSum(vector<double> a,vector<double> b){
     if(a.size()==0){return b;}
     if(b.size()==0){return a;}
@@ -244,7 +250,14 @@ class simulationWrapper{
     double step;
     simulationWrapper(simulation _sim,int _atImX,int _atImY, int _allowedWidth, int _allowedHeight,int _iterations, double _step, int _snapX,int _snapY,int _snapWidth,int _snapHeight,int _xInd,int _yInd)
         :sim(_sim),atImX(_atImX),atImY(_atImY),allowedWidth(_allowedWidth),allowedHeight(_allowedHeight),iterations(_iterations),step(_step),snapX(_snapX),snapY(_snapY),snapWidth(_snapWidth),snapHeight(_snapHeight),xInd(_xInd),yInd(_yInd){};
+    
+    void snapshot(unsigned char* data,int partitionStart,int partitionEnd){
+
+    }
 };
+
+
+
 
 
 class image{
@@ -264,6 +277,7 @@ class image{
         file = fopen(fileName, "wb");
         widthInBytes = width * BYTES_PER_PIXEL;
         paddingSize = (4 - (widthInBytes) % 4) % 4;
+        
     };
     
 
@@ -301,9 +315,9 @@ class image{
             //Set all pixels to defualt in current partition
             for (int i = 0; i < PARTITION_WIDTH; i++) {
                 for (int j = 0; j < PARTITION_HEIGHT; j++) {
-                    data[i][j][2] = (unsigned char) (000);///red
-                    data[i][j][1] = (unsigned char) (000);;///green
-                    data[i][j][0] = (unsigned char) (000);///blue
+                    data[i][j][2] = i%10==0?(unsigned char) (125):(unsigned char) (000);///red
+                    data[i][j][1] = j%10==0?(unsigned char) (125):(unsigned char) (000);;///green
+                    data[i][j][0] = (i==PARTITION_WIDTH/2)||(j==PARTITION_HEIGHT/2)?(unsigned char) (125):(unsigned char) (000);///blue
                 }  
             }
 
@@ -317,15 +331,15 @@ class image{
             int yBoundEnd = floor(partitionEnd/width);
             for(simulationWrapper sw: sims){
                 //check if simulation is in current partition
-                if((sw.atImX<=xBoundEnd&&sw.atImX+sw.allowedWidth>=xBoundStart)&&
-                   (sw.atImY<=yBoundEnd&&sw.atImY+sw.allowedHeight>=yBoundStart)){
+                //if((sw.atImX<=xBoundEnd&&sw.atImX+sw.allowedWidth>=xBoundStart)&&
+                 //  (sw.atImY<=yBoundEnd&&sw.atImY+sw.allowedHeight>=yBoundStart)){
 
                     //now iterate the simulation and add snapshot data to partition
                     for(int i =0;i<sw.iterations;i++){
                         sw.sim.step(sw.step);
                        sw.sim.snapshot((unsigned char*)data,height,width,partitionStart,partitionEnd,sw.atImX,sw.atImY,sw.allowedWidth,sw.allowedHeight,sw.snapX,sw.snapY,sw.snapWidth,sw.snapHeight,sw.xInd,sw.yInd);
                     }
-                }
+                //}
             }
 
             //now push the partition to image file
@@ -410,7 +424,7 @@ int main ()
     simulation sim1;
     sim1.addObject(simulationObject(100,{0,10,0},{0,-1,0},{125,0,0},2));
     sim1.addObject(simulationObject(90,{10,0,0},{-1,0,0},{0,0,125},2));
-    simulationWrapper sw1 = simulationWrapper(sim1,0,0,200,200,10000,.00001,-100,-100,200,200,0,1);
+    simulationWrapper sw1 = simulationWrapper(sim1,0,0,400,400,100000,.0001,-200,-200,400,400,0,1);
     myImage.addSimulation(sw1);
     myImage.generateImageFile();
 
