@@ -150,6 +150,7 @@ class simulationObject{
 class simulation{
     private:
     vector<simulationObject> objects;
+    vector<simulationObject> backup;
     double gravitationalConstant = 10;
     double gTime;
     //6.674*pow(10,-11)
@@ -160,6 +161,11 @@ class simulation{
 
     void addObject(simulationObject _object){
         objects.push_back(_object);
+        backup.push_back(_object);
+    }
+
+    void reset(){
+        objects = backup;
     }
 
     void step(double time){
@@ -187,22 +193,26 @@ class simulation{
     }
 
 
-    void snapshot  (unsigned char* image,int imageHeight,int imageWidth,
-                    int partitionStart,int partitionEnd,
-                    int placementX, int placementY, int placementWidth, int placementHeight, 
-                    int snapX,int snapY,int snapWidth, int snapHeight,
-                    int xInd,int yInd)
+    void snapshot  (unsigned char* data,int partitionStart,int partitionEnd, int _fileX, int _fileY, int _widthInFile, int _heightInFile, int _iterations, double _step, int _snapshotX, int _snapshotY, int _snapshotWidth, int _snapshotHeight, int _xVarDimNum, int _yVarDimNum,int _fileWidth,int _fileHeight)
+        
     {
         for(simulationObject o:objects){
-            int xPosition = placementX+placementWidth*((o.getPosition()[xInd]-snapX)/snapWidth);
-            int yPosition = placementY+placementHeight*((o.getPosition()[yInd]-snapY)/snapHeight);
-            int dataPlacement = yPosition*imageWidth*BYTES_PER_PIXEL+xPosition*BYTES_PER_PIXEL;
-            if(dataPlacement<=partitionEnd&&dataPlacement>=partitionStart){
+            if(o.getPosition()[_xVarDimNum]<=_snapshotX+_snapshotWidth&&o.getPosition()[_xVarDimNum]>=_snapshotX){
+            if(o.getPosition()[_yVarDimNum]<=_snapshotY+_snapshotHeight&&o.getPosition()[_yVarDimNum]>=_snapshotY){
+                double xRat = ((double)(o.getPosition()[_xVarDimNum]-_snapshotX)/(double)_snapshotWidth);
+                double yRat = ((double)(o.getPosition()[_yVarDimNum]-_snapshotY)/(double)_snapshotHeight);
+                int xPos = _fileX+(_widthInFile*xRat);
+                int yPos = _fileY+(_heightInFile*yRat);
+                int fPos = yPos*_fileWidth+xPos;
+                if(fPos<=partitionEnd&&fPos>=partitionStart){
                 for(int i =0;i<BYTES_PER_PIXEL;i++){
-                    unsigned char *tmp = image +dataPlacement-partitionStart+i;
+                    unsigned char *tmp = data+(fPos-partitionStart)*BYTES_PER_PIXEL+i;
                     *tmp = o.color[i];
                 }
+                }
             }
+            }
+            
         }
     }
 
@@ -245,17 +255,30 @@ class simulation{
 class simulationWrapper{
     private:
     public:
-    int atImX,atImY,allowedWidth,allowedHeight,iterations,snapX,snapY,snapWidth,snapHeight,xInd,yInd;
-    simulation sim;
-    double step;
-    simulationWrapper(simulation _sim,int _atImX,int _atImY, int _allowedWidth, int _allowedHeight,int _iterations, double _step, int _snapX,int _snapY,int _snapWidth,int _snapHeight,int _xInd,int _yInd)
-        :sim(_sim),atImX(_atImX),atImY(_atImY),allowedWidth(_allowedWidth),allowedHeight(_allowedHeight),iterations(_iterations),step(_step),snapX(_snapX),snapY(_snapY),snapWidth(_snapWidth),snapHeight(_snapHeight),xInd(_xInd),yInd(_yInd){};
     
-    void snapshot(unsigned char* data,int partitionStart,int partitionEnd){
+    int fileX,fileY,widthInFile,heightInFile;
+    int snapshotX,snapshotY,snapshotWidth,snapshotHeight;
+    int xVarDimNum,yVarDimNum;
+    int fileWidth,fileHeight;
+    int iterations;
+    double stepVal;
+    simulation sim;
+    simulationWrapper(simulation _sim, int _fileX, int _fileY, int _widthInFile, int _heightInFile, int _iterations, double _step, int _snapshotX, int _snapshotY, int _snapshotWidth, int _snapshotHeight, int _xVarDimNum, int _yVarDimNum,int _fileWidth,int _fileHeight)
+        : sim(_sim), fileX(_fileX), fileY(_fileY), widthInFile(_widthInFile), heightInFile(_heightInFile), iterations(_iterations), stepVal(_step), snapshotX(_snapshotX), snapshotY(_snapshotY), snapshotWidth(_snapshotWidth), snapshotHeight(_snapshotHeight), xVarDimNum(_xVarDimNum), yVarDimNum(_yVarDimNum),fileWidth(_fileWidth),fileHeight(_fileHeight){};
 
+    void snapshot(unsigned char* data,int partitionStart,int partitionEnd){
+        sim.snapshot(data,partitionStart,partitionEnd,
+        fileX,fileY,widthInFile,heightInFile,
+        iterations,stepVal,
+        snapshotX,snapshotY,snapshotWidth,snapshotHeight,
+        xVarDimNum,yVarDimNum,
+        fileWidth,fileHeight
+        );
+    }
+    void step(){
+        sim.step(stepVal);
     }
 };
-
 
 
 
@@ -282,9 +305,7 @@ class image{
     
 
     //Substantiation//s
-    void addSimulation(simulation _sim,int _atImX,int _atImY, int _allowedWidth, int _allowedHeight,int _iterations, double _step, int _snapX,int _snapY,int _snapWidth,int _snapHeight,int _xInd,int _yInd){
-        sims.push_back(simulationWrapper(_sim,_atImX,_atImY,_allowedWidth,_allowedHeight,_iterations,_step,_snapX,_snapY,_snapWidth,_snapHeight,_xInd,_yInd));
-    };
+   
     void addSimulation(simulationWrapper sw){
         sims.push_back(sw);
     };
@@ -307,69 +328,45 @@ class image{
         fwrite(infoHeader, 1, INFO_HEADER_SIZE, file);
     }
     void generateImageData(){
-        unsigned char data[PARTITION_WIDTH][PARTITION_HEIGHT][BYTES_PER_PIXEL];
+       unsigned char data[PARTITION_WIDTH][PARTITION_HEIGHT][BYTES_PER_PIXEL];
         int imageLength = width*height;
         int pixelsGenerated =0;
-        while(pixelsGenerated<imageLength){
-            //cout<<pixelsGenerated<<imageLength<<"\n";
-            //Set all pixels to defualt in current partition
+        int iNum =0;
+        while(pixelsGenerated<imageLength){ 
+            
+            int partitionStart = pixelsGenerated;
+            int partitionLength = (PARTITION_HEIGHT*PARTITION_WIDTH)<imageLength-partitionStart?(PARTITION_HEIGHT*PARTITION_WIDTH):imageLength-partitionStart;
+            int partitionEnd = partitionStart+partitionLength;
+
+            int color[3] = {0,0,0};
+            //Generate Data for current partition
             for (int i = 0; i < PARTITION_WIDTH; i++) {
                 for (int j = 0; j < PARTITION_HEIGHT; j++) {
-                    data[i][j][2] = i%10==0?(unsigned char) (125):(unsigned char) (000);///red
-                    data[i][j][1] = j%10==0?(unsigned char) (125):(unsigned char) (000);;///green
-                    data[i][j][0] = (i==PARTITION_WIDTH/2)||(j==PARTITION_HEIGHT/2)?(unsigned char) (125):(unsigned char) (000);///blue
+                    data[i][j][2] = (unsigned char)color[2];///red
+                    data[i][j][1] = (unsigned char)color[1];///green
+                    data[i][j][0] = (unsigned char)color[0];///blue
                 }  
             }
-
-            //To figure out is a given simulation is displayed in the current partition
-            int partitionStart = pixelsGenerated;
-            int partitionLength = (PARTITION_WIDTH*PARTITION_HEIGHT)<imageLength-pixelsGenerated?(PARTITION_WIDTH*PARTITION_HEIGHT):imageLength-pixelsGenerated;
-            int partitionEnd = partitionStart+partitionLength;
-            int xBoundStart = ((PARTITION_WIDTH*PARTITION_HEIGHT)<width)&&(width-(partitionStart%width)<=(PARTITION_WIDTH*PARTITION_HEIGHT))?partitionStart%width:0;
-            int xBoundEnd = ((PARTITION_WIDTH*PARTITION_HEIGHT)<width)&&(width-(partitionStart%width)<=(PARTITION_WIDTH*PARTITION_HEIGHT))?partitionEnd%width:0;
-            int yBoundStart = floor(partitionStart/width);
-            int yBoundEnd = floor(partitionEnd/width);
-            for(simulationWrapper sw: sims){
-                //check if simulation is in current partition
-                //if((sw.atImX<=xBoundEnd&&sw.atImX+sw.allowedWidth>=xBoundStart)&&
-                 //  (sw.atImY<=yBoundEnd&&sw.atImY+sw.allowedHeight>=yBoundStart)){
-
-                    //now iterate the simulation and add snapshot data to partition
-                    for(int i =0;i<sw.iterations;i++){
-                        sw.sim.step(sw.step);
-                       sw.sim.snapshot((unsigned char*)data,height,width,partitionStart,partitionEnd,sw.atImX,sw.atImY,sw.allowedWidth,sw.allowedHeight,sw.snapX,sw.snapY,sw.snapWidth,sw.snapHeight,sw.xInd,sw.yInd);
-                    }
-                //}
+cout<<"PS:"<<partitionStart<<"pE:"<<partitionEnd<<"PL:"<<partitionLength<<"\n";
+            for(simulationWrapper sw : sims){
+                sw.sim.reset();
+                for(int i=0;i<sw.iterations;i++){
+                
+                sw.snapshot((unsigned char*)data,partitionStart,partitionEnd);
+                sw.step();
+                }
             }
-
-            //now push the partition to image file
-            
-
 
             int datapushed=0;
             while(datapushed<partitionLength){
-                int currentPushLength = datapushed+width<partitionLength?width-(partitionStart+datapushed)%width:partitionLength-datapushed;
-               //int currentPushLength = width-(partitionStart+datapushed)%width<=partitionEnd-partitionStart-datapushed?width-(partitionStart+datapushed)%width:partitionEnd-partitionStart-datapushed;
-               // cout<<data<<":"<<datapushed<<":"<<currentPushLength<<"\n";
-               // cout<<*(data+datapushed*BYTES_PER_PIXEL)<<"\n";
-                //push that data
-                fwrite((unsigned char*)data+datapushed*BYTES_PER_PIXEL,BYTES_PER_PIXEL,currentPushLength,file);
-                /**
-                int segmentPushed=0;
-                while(segmentPushed<currentPushLength){
-                    int segmentlength=currentPushLength-segmentPushed<100?currentPushLength-segmentPushed:100;
-                    fwrite((data)+10,BYTES_PER_PIXEL,segmentlength,file);
-                   // +datapushed*BYTES_PER_PIXEL+segmentPushed*BYTES_PER_PIXEL
-                    segmentPushed +=segmentlength;
-                }**/
-                
-                
-                datapushed += currentPushLength;
+                int currentPush = width-((partitionStart+datapushed)%width)>partitionLength-datapushed?partitionLength-datapushed:width-((partitionStart+datapushed)%width);
+                fwrite((unsigned char*)data+datapushed*BYTES_PER_PIXEL,BYTES_PER_PIXEL,currentPush,file);datapushed += currentPush;
                 if(datapushed<partitionLength){
                     fwrite(padding, 1, paddingSize, file);
                 }
             }
-            pixelsGenerated += partitionEnd-partitionStart;
+            iNum +=25;
+            pixelsGenerated += partitionLength;
             cout<<"PixGen:"<<pixelsGenerated<<"ImLength"<<imageLength<<"PEnd"<<partitionEnd<<"pStart"<<partitionStart<<"\n";
         }
     }
@@ -419,13 +416,18 @@ void generateBitmapImage (unsigned char* image, int height, int width, char* ima
 
 int main ()
 {
-    image myImage = image((char*)"MyImageFile.bmp",200,200);
-
-    simulation sim1;
-    sim1.addObject(simulationObject(100,{0,10,0},{0,-1,0},{125,0,0},2));
-    sim1.addObject(simulationObject(90,{10,0,0},{-1,0,0},{0,0,125},2));
-    simulationWrapper sw1 = simulationWrapper(sim1,0,0,400,400,100000,.0001,-200,-200,400,400,0,1);
-    myImage.addSimulation(sw1);
+    int IMAGE_HEIGHT =400;
+    int IMAGE_WIDTH =400;
+    image myImage = image((char*)"MyImageFile.bmp",IMAGE_WIDTH,IMAGE_HEIGHT);
+    simulation mySim;
+    mySim.addObject(simulationObject(100,{125,100,100},{2,0,-5},{0,0,125},5));
+    mySim.addObject(simulationObject(100,{100,125,100},{1,-5,0},{0,125,0},5));
+    mySim.addObject(simulationObject(100,{100,100,125},{-5,3,0},{125,0,0},5));
+    simulationWrapper sw = simulationWrapper(mySim,0,0,200,200,5000,.001,70,70,60,60,0,1,IMAGE_WIDTH,IMAGE_HEIGHT);
+    simulationWrapper sw2 = simulationWrapper(mySim,200,0,200,200,5000,.001,70,70,60,60,0,2,IMAGE_WIDTH,IMAGE_HEIGHT);
+    
+    myImage.addSimulation(sw);
+    myImage.addSimulation(sw2);
     myImage.generateImageFile();
 
 
