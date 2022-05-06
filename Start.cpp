@@ -337,8 +337,7 @@ class image{
             int partitionStart = pixelsGenerated;
             int partitionLength = (PARTITION_HEIGHT*PARTITION_WIDTH)<imageLength-partitionStart?(PARTITION_HEIGHT*PARTITION_WIDTH):imageLength-partitionStart;
             int partitionEnd = partitionStart+partitionLength;
-
-            int color[3] = {0,0,0};
+            int color[3] = {iNum%125,iNum%125,iNum%125};
             //Generate Data for current partition
             for (int i = 0; i < PARTITION_WIDTH; i++) {
                 for (int j = 0; j < PARTITION_HEIGHT; j++) {
@@ -349,11 +348,19 @@ class image{
             }
 cout<<"PS:"<<partitionStart<<"pE:"<<partitionEnd<<"PL:"<<partitionLength<<"\n";
             for(simulationWrapper sw : sims){
+                if(
+                    (sw.fileX+sw.fileY*sw.fileWidth)<=partitionEnd&&(sw.fileX+sw.fileY*sw.fileWidth)>=partitionStart||
+                    (sw.fileX+sw.widthInFile+sw.fileY*sw.fileWidth)<=partitionEnd&&(sw.fileX+sw.widthInFile+sw.fileY*sw.fileWidth)>=partitionStart||
+                    (sw.fileX+(sw.fileY+sw.heightInFile)*sw.fileWidth)<=partitionEnd&&(sw.fileX+(sw.fileY+sw.heightInFile)*sw.fileWidth)>=partitionStart||
+                    (sw.fileX+sw.widthInFile+(sw.fileY+sw.heightInFile)*sw.fileWidth)<=partitionEnd&&(sw.fileX+sw.widthInFile+(sw.fileY+sw.heightInFile)*sw.fileWidth)>=partitionStart
+                ){
+                cout<<iNum<<":\n";
                 sw.sim.reset();
                 for(int i=0;i<sw.iterations;i++){
                 
                 sw.snapshot((unsigned char*)data,partitionStart,partitionEnd);
                 sw.step();
+                }
                 }
             }
 
@@ -423,8 +430,8 @@ int main ()
     mySim.addObject(simulationObject(100,{125,100,100},{2,0,-5},{0,0,125},5));
     mySim.addObject(simulationObject(100,{100,125,100},{1,-5,0},{0,125,0},5));
     mySim.addObject(simulationObject(100,{100,100,125},{-5,3,0},{125,0,0},5));
-    simulationWrapper sw = simulationWrapper(mySim,0,0,200,200,5000,.001,70,70,60,60,0,1,IMAGE_WIDTH,IMAGE_HEIGHT);
-    simulationWrapper sw2 = simulationWrapper(mySim,200,0,200,200,5000,.001,70,70,60,60,0,2,IMAGE_WIDTH,IMAGE_HEIGHT);
+    simulationWrapper sw = simulationWrapper(mySim,0,0,200,200,10000,.005,70,70,60,60,0,1,IMAGE_WIDTH,IMAGE_HEIGHT);
+    simulationWrapper sw2 = simulationWrapper(mySim,200,0,200,200,10000,.005,70,70,60,60,0,2,IMAGE_WIDTH,IMAGE_HEIGHT);
     
     myImage.addSimulation(sw);
     myImage.addSimulation(sw2);
@@ -432,7 +439,7 @@ int main ()
 
 
     /**
-    simulation mySimulation;
+    simulation mySimulation;`
     
     
     //mySimulation.addObject(simulationObject((1988500*pow(10,24)),{0,0,0},{0,0,0},{000,255,000},3));
